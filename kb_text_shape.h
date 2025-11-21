@@ -4179,26 +4179,26 @@ static kbts__op_kind kbts__Ops_Hangul[] = {
 };
 static kbts__feature_stage kbts__FeatureStages_Hangul[] = {
   {1, {{0ull, 0ull, 0ull, 0ull | KBTS__FEATURE_FLAG3(rvrn)}}},
-  {8, {{0ull | KBTS__FEATURE_FLAG0(frac) | KBTS__FEATURE_FLAG0(numr) | KBTS__FEATURE_FLAG0(dnom) | KBTS__FEATURE_FLAG0(ljmo) | KBTS__FEATURE_FLAG0(vjmo) | KBTS__FEATURE_FLAG0(tjmo), 0ull, 0ull | KBTS__FEATURE_FLAG2(ltra) | KBTS__FEATURE_FLAG2(ltrm), 0ull}}},
-  {13, {{0ull | KBTS__FEATURE_FLAG0(abvm) | KBTS__FEATURE_FLAG0(blwm) | KBTS__FEATURE_FLAG0(ccmp) | KBTS__FEATURE_FLAG0(clig) | KBTS__FEATURE_FLAG0(curs), 0ull, 0ull | KBTS__FEATURE_FLAG2(mkmk) | KBTS__FEATURE_FLAG2(rlig) | KBTS__FEATURE_FLAG2(liga) | KBTS__FEATURE_FLAG2(locl) | KBTS__FEATURE_FLAG2(mark) | KBTS__FEATURE_FLAG2(dist) | KBTS__FEATURE_FLAG2(kern) | KBTS__FEATURE_FLAG2(rclt), 0ull}}},
+  {14, {{0ull | KBTS__FEATURE_FLAG0(frac) | KBTS__FEATURE_FLAG0(numr) | KBTS__FEATURE_FLAG0(dnom) | KBTS__FEATURE_FLAG0(ljmo) | KBTS__FEATURE_FLAG0(vjmo) | KBTS__FEATURE_FLAG0(tjmo) | KBTS__FEATURE_FLAG0(ccmp) | KBTS__FEATURE_FLAG0(clig), 0ull, 0ull | KBTS__FEATURE_FLAG2(ltra) | KBTS__FEATURE_FLAG2(ltrm) | KBTS__FEATURE_FLAG2(rlig) | KBTS__FEATURE_FLAG2(liga) | KBTS__FEATURE_FLAG2(locl) | KBTS__FEATURE_FLAG2(rclt), 0ull}}},
+  {7, {{0ull | KBTS__FEATURE_FLAG0(abvm) | KBTS__FEATURE_FLAG0(blwm) | KBTS__FEATURE_FLAG0(curs), 0ull, 0ull | KBTS__FEATURE_FLAG2(mkmk) | KBTS__FEATURE_FLAG2(mark) | KBTS__FEATURE_FLAG2(dist) | KBTS__FEATURE_FLAG2(kern), 0ull}}},
 };
 static kbts__op_list kbts__OpList_Hangul = {22, KBTS__ARRAY_LENGTH(kbts__FeatureStages_Hangul), kbts__FeatureStages_Hangul, KBTS__ARRAY_LENGTH(kbts__Ops_Hangul), kbts__Ops_Hangul};
 static kbts__op_kind kbts__Ops_ArabicRclt[] = {
   KBTS__OP_KIND_NORMALIZE,
   KBTS__OP_KIND_FLAG_JOINING_LETTERS,
   KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_GSUB_FEATURES_WITH_USER,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_GPOS_METRICS,
   KBTS__OP_KIND_GPOS_FEATURES,
   KBTS__OP_KIND_STCH_POSTPASS,
@@ -4225,19 +4225,19 @@ static kbts__op_kind kbts__Ops_ArabicNoRclt[] = {
   KBTS__OP_KIND_NORMALIZE,
   KBTS__OP_KIND_FLAG_JOINING_LETTERS,
   KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_GSUB_FEATURES_WITH_USER,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_GPOS_METRICS,
   KBTS__OP_KIND_GPOS_FEATURES,
   KBTS__OP_KIND_STCH_POSTPASS,
@@ -4265,7 +4265,7 @@ static kbts__op_kind kbts__Ops_Indic[] = {
   KBTS__OP_KIND_PRE_NORMALIZE_DOTTED_CIRCLES,
   KBTS__OP_KIND_NORMALIZE,
   KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES_WITH_USER,
+  KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_BEGIN_CLUSTER,
   KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_GSUB_FEATURES,
@@ -4281,7 +4281,7 @@ static kbts__op_kind kbts__Ops_Indic[] = {
   KBTS__OP_KIND_END_CLUSTER,
   KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_END_SYLLABLE,
-  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES_WITH_USER,
   KBTS__OP_KIND_GPOS_METRICS,
   KBTS__OP_KIND_GPOS_FEATURES,
   KBTS__OP_KIND_POST_GPOS_FIXUP,
@@ -4309,12 +4309,12 @@ static kbts__op_kind kbts__Ops_Khmer[] = {
   KBTS__OP_KIND_PRE_NORMALIZE_DOTTED_CIRCLES,
   KBTS__OP_KIND_NORMALIZE,
   KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES_WITH_USER,
+  KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_BEGIN_CLUSTER,
   KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_END_CLUSTER,
   KBTS__OP_KIND_END_SYLLABLE,
-  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES_WITH_USER,
   KBTS__OP_KIND_GPOS_METRICS,
   KBTS__OP_KIND_GPOS_FEATURES,
   KBTS__OP_KIND_POST_GPOS_FIXUP,
@@ -4331,7 +4331,7 @@ static kbts__op_kind kbts__Ops_Myanmar[] = {
   KBTS__OP_KIND_PRE_NORMALIZE_DOTTED_CIRCLES,
   KBTS__OP_KIND_NORMALIZE,
   KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES_WITH_USER,
+  KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_BEGIN_CLUSTER,
   KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_END_CLUSTER,
@@ -4340,7 +4340,7 @@ static kbts__op_kind kbts__Ops_Myanmar[] = {
   KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_END_SYLLABLE,
-  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES_WITH_USER,
   KBTS__OP_KIND_GPOS_METRICS,
   KBTS__OP_KIND_GPOS_FEATURES,
   KBTS__OP_KIND_POST_GPOS_FIXUP,
@@ -4358,9 +4358,9 @@ static kbts__feature_stage kbts__FeatureStages_Myanmar[] = {
 };
 static kbts__op_list kbts__OpList_Myanmar = {28, KBTS__ARRAY_LENGTH(kbts__FeatureStages_Myanmar), kbts__FeatureStages_Myanmar, KBTS__ARRAY_LENGTH(kbts__Ops_Myanmar), kbts__Ops_Myanmar};
 static kbts__op_kind kbts__Ops_Tibetan[] = {
+  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_GSUB_FEATURES_WITH_USER,
-  KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_GPOS_METRICS,
   KBTS__OP_KIND_GPOS_FEATURES,
   KBTS__OP_KIND_POST_GPOS_FIXUP,
@@ -4377,7 +4377,7 @@ static kbts__op_kind kbts__Ops_Use[] = {
   KBTS__OP_KIND_NORMALIZE,
   KBTS__OP_KIND_FLAG_JOINING_LETTERS,
   KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES_WITH_USER,
+  KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_BEGIN_CLUSTER,
   KBTS__OP_KIND_GSUB_FEATURES,
   KBTS__OP_KIND_GSUB_FEATURES,
@@ -4386,7 +4386,7 @@ static kbts__op_kind kbts__Ops_Use[] = {
   KBTS__OP_KIND_END_CLUSTER,
   KBTS__OP_KIND_END_SYLLABLE,
   KBTS__OP_KIND_GSUB_FEATURES,
-  KBTS__OP_KIND_GSUB_FEATURES,
+  KBTS__OP_KIND_GSUB_FEATURES_WITH_USER,
   KBTS__OP_KIND_GPOS_METRICS,
   KBTS__OP_KIND_GPOS_FEATURES,
   KBTS__OP_KIND_POST_GPOS_FIXUP,
@@ -17024,6 +17024,7 @@ static void kbts__ByteSwapGsubGposCommon(kbts__byteswap_context *Context, kbts__
       }
     }
 
+    // @Incomplete
     if((Header->Minor == 1) && Header->FeatureVariationsOffset)
     {
       kbts__feature_variations *FeatureVariations = KBTS__POINTER_OFFSET(kbts__feature_variations, Header, Header->FeatureVariationsOffset);
@@ -17059,6 +17060,7 @@ static void kbts__ByteSwapGsubGposCommon(kbts__byteswap_context *Context, kbts__
               }
             }
 
+            // @Incomplete
             kbts__feature_table_substitution *FeatureSubst = KBTS__POINTER_OFFSET(kbts__feature_table_substitution, FeatureVariations, Record->FeatureTableSubstitutionOffset);
 
             if(!kbts__AlreadyVisited(Context, FeatureSubst))
@@ -17070,6 +17072,7 @@ static void kbts__ByteSwapGsubGposCommon(kbts__byteswap_context *Context, kbts__
               {
                 kbts__feature_table_substitution_record *SubstRecord = &SubstRecords[SubstRecordIndex];
                 SubstRecord->FeatureIndex = kbts__ByteSwap16(SubstRecord->FeatureIndex);
+                SubstRecord->AlternateFeatureOffset = kbts__ByteSwap32(SubstRecord->AlternateFeatureOffset);
 
                 kbts__feature *Feature = KBTS__POINTER_OFFSET(kbts__feature, FeatureSubst, SubstRecord->AlternateFeatureOffset);
                 kbts__ByteSwapFeature(Context, Feature);
@@ -20144,6 +20147,7 @@ static int kbts__DoSingleAdjustment(kbts__shape_scratchpad *Scratchpad, kbts_sha
         // don't do that zeroing at the end (either because they do it at the beginning of GPOS, or
         // because they don't do it at all).
         int CountMarkAdvances = !kbts__ShaperClearsMarkAdvancesInPostGposFixup(Config->Shaper);
+        kbts__coverage *BaseCoverage = KBTS__POINTER_OFFSET(kbts__coverage, Adjust, Adjust->BaseCoverageOffset);
         kbts_s32 AdvanceSinceBaseX = 0;
         kbts_s32 AdvanceSinceBaseY = 0;
         kbts_u32 BaseClasses = Lookup->Type == 6 ? (1 << KBTS__GLYPH_CLASS_MARK) : (1 | (1 << KBTS__GLYPH_CLASS_BASE) | (1 << KBTS__GLYPH_CLASS_LIGATURE) | (1 << KBTS__GLYPH_CLASS_COMPONENT));
@@ -20160,8 +20164,33 @@ static int kbts__DoSingleAdjustment(kbts__shape_scratchpad *Scratchpad, kbts_sha
           {
             if((1 << PrevGlyph->Classes.Class) & BaseClasses)
             {
-              BaseGlyph = PrevGlyph;
-              break;
+              // :MultipleSubstSadness
+              // There is some sadness when we have to look for bases here...
+              // In multiple substitutions, we allow skipping covered glyphs if they are:
+              // - Not the first in the multiple substitution
+              // - Not preceded by a mark
+              //
+              // More details on the sadness can be found here:
+              //   https://github.com/harfbuzz/harfbuzz/issues/740
+              //   https://github.com/harfbuzz/harfbuzz/issues/1020
+              //   https://github.com/harfbuzz/harfbuzz/issues/4124
+              if((Lookup->Type == 4) &&
+                 ((PrevGlyph->Flags & (KBTS_GLYPH_FLAG_FIRST_IN_MULTIPLE_SUBSTITUTION | KBTS_GLYPH_FLAG_MULTIPLE_SUBSTITUTION)) == KBTS_GLYPH_FLAG_MULTIPLE_SUBSTITUTION) && // Stop if we see the first of a multiple substitution.
+                 (PrevGlyph->Prev->Classes.Class != KBTS__GLYPH_CLASS_MARK)) // Stop if we see any mark.
+              {
+                // Otherwise, we allow skipping uncovered glyphs.
+                kbts__cover_glyph_result BaseCover = kbts__CoverGlyph(BaseCoverage, PrevGlyph->Id);
+                if(BaseCover.Valid)
+                {
+                  BaseGlyph = PrevGlyph;
+                  break;
+                }
+              }
+              else
+              {
+                BaseGlyph = PrevGlyph;
+                break;
+              }
             }
             else if(Lookup->Type == 6)
             {
@@ -20178,7 +20207,8 @@ static int kbts__DoSingleAdjustment(kbts__shape_scratchpad *Scratchpad, kbts_sha
                    ((BaseGlyph->Flags | CurrentGlyph->Flags) & KBTS_GLYPH_FLAG_LIGATURE); // This is a mark-to-mark attachment, and either mark was created by a ligature substitution
           if(Ok)
           {
-            kbts__cover_glyph_result BaseCover = kbts__CoverGlyph(KBTS__POINTER_OFFSET(kbts__coverage, Adjust, Adjust->BaseCoverageOffset), BaseGlyph->Id);
+            // @Speed: This is duplicating work in the :MultipleSubstSadness case.
+            kbts__cover_glyph_result BaseCover = kbts__CoverGlyph(BaseCoverage, BaseGlyph->Id);
 
             if(BaseCover.Valid)
             {
@@ -24267,11 +24297,11 @@ static kbts_shape_config *kbts__PlaceShapeConfig(kbts_font *Font, kbts_script Sc
       {
         kbts__op_kind Op = Result->OpList.Ops[OpIndex];
         int UserFeaturesAllowed = KBTS__IN_SET(Op, KBTS__SET32((KBTS__OP_KIND_GSUB_FEATURES_WITH_USER)
-                                                             (KBTS__OP_KIND_GPOS_FEATURES)));
+                                                               (KBTS__OP_KIND_GPOS_FEATURES)));
 
         if(KBTS__IN_SET(Op, KBTS__SET32((KBTS__OP_KIND_GSUB_FEATURES)
-                                      (KBTS__OP_KIND_GSUB_FEATURES_WITH_USER)
-                                      (KBTS__OP_KIND_GPOS_FEATURES))))
+                                        (KBTS__OP_KIND_GSUB_FEATURES_WITH_USER)
+                                        (KBTS__OP_KIND_GPOS_FEATURES))))
         {
           kbts__feature_stage *FeatureStage = &Result->OpList.FeatureStages[FeatureStageIndex];
           kbts_shaping_table ShapingTable = (kbts_shaping_table)((Op == KBTS__OP_KIND_GPOS_FEATURES) ? KBTS_SHAPING_TABLE_GPOS : KBTS_SHAPING_TABLE_GSUB);
@@ -24295,6 +24325,7 @@ static kbts_shape_config *kbts__PlaceShapeConfig(kbts_font *Font, kbts_script Sc
               kbts__feature_pointer Feature = kbts__GetFeature(FeatureList, FeatureIndex);
 
               kbts_u32 FeatureId = kbts_FeatureTagToId(Feature.Tag);
+
               if(Feature.Feature->LookupIndexCount &&
                  ((UserFeaturesAllowed &&
                    !kbts__ContainsFeature(&Result->Features, FeatureId)) ||
