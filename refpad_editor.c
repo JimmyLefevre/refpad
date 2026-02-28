@@ -510,6 +510,12 @@ typedef struct editor
     layout_glyph *LineGlyphs;
     int LineGlyphCount;
     int LineGlyphCapacity;
+    int LastSoftLineBreakLineGlyphIndexPlusOne;
+    int LastSoftLineBreakCodepointIndex;
+    float AdvanceAtSoftLineBreak;
+    int LastShapeBreakLineGlyphIndexPlusOne;
+    int LastShapeBreakCodepointIndex;
+    float AdvanceAtShapeBreak;
 
     draw_box TextBounds;
 
@@ -629,14 +635,10 @@ static edit_line *EditorBeginLine(editor *Editor, draw_command_list *DrawList)
     return Line;
 }
 
-static void FlushLine(draw_command_list *DrawList, editor *Editor);
-
 static void EditorEndLine(editor *Editor, draw_command_list *DrawList)
 {
     if(Editor->LineCount < LINE_CAPACITY)
     {
-        FlushLine(DrawList, Editor);
-
         edit_line *Line = &Editor->Lines[Editor->LineCount];
         Line->OnePastLastCommandIndex = (uint32_t)DrawList->Count;
         Line->OnePastLastSelectionIndex = (uint32_t)DrawList->SelectionsCount;
@@ -659,13 +661,11 @@ static edit_line *EditorNextLine(editor *Editor, draw_command_list *DrawList)
     return Result;
 }
 
-static void EditorEndLines(editor *Editor, draw_command_list *DrawList)
+static edit_line *GetCurrentLine(editor *Editor)
 {
-    // Having an empty line at the end of text is more trouble than it's worth.
-    if(Editor->LineGlyphCount)
-    {
-        EditorEndLine(Editor, DrawList);
-    }
+    assert(Editor->LineCount < Editor->LineCapacity);
+    edit_line *Result = &Editor->Lines[Editor->LineCount];
+    return Result;
 }
 
 static int DrawBoxIsValid(draw_box *Box)
@@ -673,15 +673,6 @@ static int DrawBoxIsValid(draw_box *Box)
     // When flushing lines, we know the X bounds of selections, but not the Y bounds.
     // We use this function at flush time, so we only take X bounds into account.
     int Result = Box->MinX != FLT_MAX;
-    return Result;
-}
-
-#define CURSOR_THICKNESS 4
-
-static edit_line *GetCurrentLine(editor *Editor)
-{
-    assert(Editor->LineCount < Editor->LineCapacity);
-    edit_line *Result = &Editor->Lines[Editor->LineCount];
     return Result;
 }
 
@@ -694,152 +685,221 @@ static void FlushLine(draw_command_list *DrawList, editor *Editor)
     edit_line *Line = GetCurrentLine(Editor);
 
     layout_glyph *LineGlyphs = Editor->LineGlyphs;
-    if(Line->Direction == KBTS_DIRECTION_RTL)
-    {
-        LineGlyphs = Editor->LineGlyphs + Editor->LineGlyphCapacity - Editor->LineGlyphCount;
-    }
 
     font *CurrentFont = 0;
     kbts_direction CurrentDirection = KBTS_DIRECTION_DONT_KNOW;
     draw_box Selection = InvalidDrawBox();
 
+    // @Hardcoded!
+    arena_lifetime Lifetime = ArenaBeginLifetime(&Editor->Arena);
+    int *DirectionBlockOffsets = PushArray(&Editor->Arena, int, Editor->LineGlyphCapacity + 1, 1);
+    int DirectionBlockCount = 0;
+
+    // At this point, Editor->LineGlyphs is still in logical order.
+    // For drawing, we want:
+    // - Clearly separated direction blocks. An LTR paragraph will display them forward, while an
+    //   RTL one will display them backward. (The final line offset is added in a latter pass.)
+    // - Within a single block, LTR visual order.
     for(int GlyphIndex = 0;
         GlyphIndex < Editor->LineGlyphCount;
-        ++GlyphIndex)
+        )
     {
         layout_glyph *Glyph = &LineGlyphs[GlyphIndex];
-        float Scale = Glyph->Scale;
+        kbts_direction Direction = Glyph->Direction;
 
-        if(Glyph->Direction != CurrentDirection)
+        DirectionBlockOffsets[DirectionBlockCount++] = GlyphIndex;
+
+        int DirectionGlyphCount = 1;
+        while((GlyphIndex + DirectionGlyphCount) < Editor->LineGlyphCount)
         {
-            // There can be maximum one selection rectangle per direction break.
-            // We have to switch to a new selection between direction breaks because of the
-            // visual discontinuity between LTR and RTL text.
+            layout_glyph *BlockGlyph = &LineGlyphs[GlyphIndex + DirectionGlyphCount];
 
-            if(DrawBoxIsValid(&Selection))
+            // Subsequent glyphs with the same direction can still technically be visually broken up!
+            // Here's an example: "خرج456 now"
+            // Logical: <Arabic letters>456<space>now
+            // Visual: now<space>456<Arabic letters>
+            // The LTR sequence is broken up because the "456" is part of the previous word, which
+            // is an LTR word. In that case, we definitely do not want to insert the space in-between
+            // "456" and the Arabic letters, because that would break up the word into two! So the
+            // whitespace has to go on the left of the entire word, which naturally works if we use
+            // word breaks as boundaries here.
+            // 
+            if(((BlockGlyph->CodepointIndex == Glyph->CodepointIndex) ||
+                !(BlockGlyph->BreakFlags & KBTS_BREAK_FLAG_WORD)) &&
+               (BlockGlyph->Direction == Direction))
             {
-                // If there's a selection that's valid, keep it.
-                // #TODO: This is the natural place to give it height, which should be passed in.
-                DrawList->Selections[DrawList->SelectionsCount++] = Selection;
+                DirectionGlyphCount += 1;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if(Direction == KBTS_DIRECTION_RTL)
+        {
+            for(int SwapIndex = 0;
+                SwapIndex < DirectionGlyphCount / 2;
+                ++SwapIndex)
+            {
+                layout_glyph *Left = &LineGlyphs[GlyphIndex + SwapIndex];
+                layout_glyph *Right = &LineGlyphs[GlyphIndex + DirectionGlyphCount - 1 - SwapIndex];
+                layout_glyph Swap = *Left;
+                *Left = *Right;
+                *Right = Swap;
+            }
+        }
+
+        GlyphIndex += DirectionGlyphCount;
+    }
+    DirectionBlockOffsets[DirectionBlockCount] = Editor->LineGlyphCount;
+
+    for(int UnflippedBlockIndex = 0;
+        UnflippedBlockIndex < DirectionBlockCount;
+        ++UnflippedBlockIndex)
+    {
+        int BlockIndex = (Line->Direction == KBTS_DIRECTION_RTL) ? (DirectionBlockCount - 1 - UnflippedBlockIndex) : UnflippedBlockIndex;
+        int FirstGlyphIndex = DirectionBlockOffsets[BlockIndex];
+        int OnePastLastGlyphIndex = DirectionBlockOffsets[BlockIndex + 1];
+
+        for(int GlyphIndex = FirstGlyphIndex;
+            GlyphIndex < OnePastLastGlyphIndex;
+            ++GlyphIndex)
+        {
+            layout_glyph *Glyph = &LineGlyphs[GlyphIndex];
+            float Scale = Glyph->Scale;
+
+            if(Glyph->Direction != CurrentDirection)
+            {
+                // There can be maximum one selection rectangle per direction break.
+                // We have to switch to a new selection between direction breaks because of the
+                // visual discontinuity between LTR and RTL text.
+
+                if(DrawBoxIsValid(&Selection))
+                {
+                    // If there's a selection that's valid, keep it.
+                    // #TODO: This is the natural place to give it height, which should be passed in.
+                    DrawList->Selections[DrawList->SelectionsCount++] = Selection;
+                }
+
+                Selection = InvalidDrawBox();
+                CurrentDirection = Glyph->Direction;
             }
 
-            Selection = InvalidDrawBox();
-            CurrentDirection = Glyph->Direction;
-        }
+            if(Glyph->Font != CurrentFont)
+            {
+                CurrentFont = Glyph->Font;
+            }
 
-        if(Glyph->Font != CurrentFont)
-        {
-            CurrentFont = Glyph->Font;
-        }
+            Line->MinCodepointIndex = MINIMUM(Line->MinCodepointIndex, Glyph->CodepointIndex);
+            Line->MaxCodepointIndex = MAXIMUM(Line->MaxCodepointIndex, Glyph->CodepointIndex);
 
-        Line->MinCodepointIndex = MINIMUM(Line->MinCodepointIndex, Glyph->CodepointIndex);
-        Line->MaxCodepointIndex = MAXIMUM(Line->MaxCodepointIndex, Glyph->CodepointIndex);
-
-        float AdvanceXPx = (float)Glyph->AdvanceX * Scale;
-        float AdvanceYPx = (float)Glyph->AdvanceY * Scale;
-        int DoNotDisplay = 0;
-        if(!(Editor->Flags & EDITOR_FLAG_DISPLAY_NEWLINES))
-        {
-            DoNotDisplay = (Glyph->IsNewline != 0);
-        }
-
-        if(DoNotDisplay)
-        {
-            AdvanceXPx = 0;
-        }
-
-        if(Glyph->Font)
-        {
-            int MinX, MinY, MaxX, MaxY;
-            stbtt_GetGlyphBitmapBoxSubpixel(&Glyph->Font->Stbtt, Glyph->Id, Scale, Scale, 0, 0, &MinX, &MinY, &MaxX, &MaxY);
+            float AdvanceXPx = (float)Glyph->AdvanceX * Scale;
+            float AdvanceYPx = (float)Glyph->AdvanceY * Scale;
+            int DoNotDisplay = 0;
+            if(!(Editor->Flags & EDITOR_FLAG_DISPLAY_NEWLINES))
+            {
+                DoNotDisplay = (Glyph->IsNewline != 0);
+            }
 
             if(DoNotDisplay)
             {
-                // We set the width to 0 here, which makes it so the glyph will never be marked as DRAW_COMMAND_FLAG_VISIBLE in
-                // the layout pass.
-                // Keeping the draw commands around as end-of-line sentinels is useful.
-                MaxX = MinX;
+                AdvanceXPx = 0;
             }
 
-            float GlyphX = CursorX + (float)Glyph->OffsetX * Scale;
-            float GlyphY = AscentPx + CursorY - (float)Glyph->OffsetY * Scale;
-            float GlyphWidthPx = (float)(MaxX - MinX);
-            float GlyphHeightPx = (float)(MaxY - MinY);
-
-            draw_command DummyCommand;
-            draw_command *Command = &DummyCommand;
-
-            if(DrawList->Count < DrawList->Capacity)
+            if(Glyph->Font)
             {
-                Command = &DrawList->Commands[DrawList->Count++];
-                Command->Font = Glyph->Font;
-                Command->GlyphIndex = Glyph->Id;
-                Command->CodepointIndex = Glyph->CodepointIndex;
-                Command->X = GlyphX;
-                Command->Y = GlyphY;
-                Command->ScaledWidth = GlyphWidthPx;
-                Command->ScaledHeight = GlyphHeightPx;
-                Command->Scale = Scale;
-                Command->Flags = 0;
-            }
+                int MinX, MinY, MaxX, MaxY;
+                stbtt_GetGlyphBitmapBoxSubpixel(&Glyph->Font->Stbtt, Glyph->Id, Scale, Scale, 0, 0, &MinX, &MinY, &MaxX, &MaxY);
 
-            Line->GlyphBox = DrawBoxUnion(Line->GlyphBox.MinX, Line->GlyphBox.MinY, Line->GlyphBox.MaxX, Line->GlyphBox.MaxY,
-                                          GlyphX, GlyphY, GlyphX + GlyphWidthPx, GlyphY + GlyphHeightPx);
-
-            // Expand the bounding box of the selection on this line by the glyph.
-            // Have to do this before and after advance, for both min and max, because LTR and RTL advance in different directions,
-            // but the MinX/MaxX are visually always left/right.
-            if (IsCharacterSelected(Editor, Glyph->CodepointIndex)) {
-                Selection.MinX = MINIMUM(CursorX, Selection.MinX);
-                Selection.MaxX = MAXIMUM(CursorX, Selection.MaxX);
-                Selection.MinX = MINIMUM(CursorX + AdvanceXPx, Selection.MinX);
-                Selection.MaxX = MAXIMUM(CursorX + AdvanceXPx, Selection.MaxX);
-                Selection.MinY = MINIMUM(CursorY, Selection.MinY);
-                Selection.MaxY = -INFINITY; // Filled in the layout pass.
-
-                Command->Flags |= DRAW_COMMAND_FLAG_SELECTED;
-            }
-        }
-
-        // @Cleanup @Duplication: There are some annoying off-by-one differences in behavior we have to deal with here
-        // depending on which direction the run is going.
-        if(Glyph->Direction == KBTS_DIRECTION_LTR)
-        {
-            if ((Glyph->CodepointIndex <= Editor->CursorPosition.CodepointIndex) &&
-                (!DrawList->ClosestCodepointIndexToCursorPlusOne ||
-                ((Glyph->CodepointIndex + 1) > DrawList->ClosestCodepointIndexToCursorPlusOne))) {
-                DrawList->ClosestCodepointIndexToCursorPlusOne = Glyph->CodepointIndex + 1;
-
-                DrawList->Cursor.X = CursorX;
-                DrawList->Cursor.Y = CursorY;
-
-                if(!(Editor->Flags & EDITOR_FLAG_KEEP_DESIRED_X))
+                if(DoNotDisplay)
                 {
-                    Editor->CursorPosition.DesiredX = CursorX;
-                    Editor->CursorPosition.LineIndex = Editor->LineCount;
+                    // We set the width to 0 here, which makes it so the glyph will never be marked as DRAW_COMMAND_FLAG_VISIBLE in
+                    // the layout pass.
+                    // Keeping the draw commands around as end-of-line sentinels is useful.
+                    MaxX = MinX;
+                }
+
+                float GlyphX = CursorX + (float)Glyph->OffsetX * Scale;
+                float GlyphY = AscentPx + CursorY - (float)Glyph->OffsetY * Scale;
+                float GlyphWidthPx = (float)(MaxX - MinX);
+                float GlyphHeightPx = (float)(MaxY - MinY);
+
+                draw_command DummyCommand;
+                draw_command *Command = &DummyCommand;
+
+                if(DrawList->Count < DrawList->Capacity)
+                {
+                    Command = &DrawList->Commands[DrawList->Count++];
+                    Command->Font = Glyph->Font;
+                    Command->GlyphIndex = Glyph->Id;
+                    Command->CodepointIndex = Glyph->CodepointIndex;
+                    Command->X = GlyphX;
+                    Command->Y = GlyphY;
+                    Command->ScaledWidth = GlyphWidthPx;
+                    Command->ScaledHeight = GlyphHeightPx;
+                    Command->Scale = Scale;
+                    Command->Flags = 0;
+                }
+
+                Line->GlyphBox = DrawBoxUnion(Line->GlyphBox.MinX, Line->GlyphBox.MinY, Line->GlyphBox.MaxX, Line->GlyphBox.MaxY,
+                                              GlyphX, GlyphY, GlyphX + GlyphWidthPx, GlyphY + GlyphHeightPx);
+
+                // Expand the bounding box of the selection on this line by the glyph.
+                // Have to do this before and after advance, for both min and max, because LTR and RTL advance in different directions,
+                // but the MinX/MaxX are visually always left/right.
+                if (IsCharacterSelected(Editor, Glyph->CodepointIndex)) {
+                    Selection.MinX = MINIMUM(CursorX, Selection.MinX);
+                    Selection.MaxX = MAXIMUM(CursorX, Selection.MaxX);
+                    Selection.MinX = MINIMUM(CursorX + AdvanceXPx, Selection.MinX);
+                    Selection.MaxX = MAXIMUM(CursorX + AdvanceXPx, Selection.MaxX);
+                    Selection.MinY = MINIMUM(CursorY, Selection.MinY);
+                    Selection.MaxY = -INFINITY; // Filled in the layout pass.
+
+                    Command->Flags |= DRAW_COMMAND_FLAG_SELECTED;
                 }
             }
-        }
-        else
-        {
-            if ((Glyph->CodepointIndex <= Editor->CursorPosition.CodepointIndex) &&
-                (!DrawList->ClosestCodepointIndexToCursorPlusOne ||
-                ((Glyph->CodepointIndex + 1) >= DrawList->ClosestCodepointIndexToCursorPlusOne))) {
-                DrawList->ClosestCodepointIndexToCursorPlusOne = Glyph->CodepointIndex + 1;
 
-                DrawList->Cursor.X = CursorX + AdvanceXPx;
-                DrawList->Cursor.Y = CursorY - AdvanceYPx;
+            // @Cleanup @Duplication: There are some annoying off-by-one differences in behavior we have to deal with here
+            // depending on which direction the run is going.
+            if(Glyph->Direction == KBTS_DIRECTION_LTR)
+            {
+                if ((Glyph->CodepointIndex <= Editor->CursorPosition.CodepointIndex) &&
+                    (!DrawList->ClosestCodepointIndexToCursorPlusOne ||
+                    ((Glyph->CodepointIndex + 1) > DrawList->ClosestCodepointIndexToCursorPlusOne))) {
+                    DrawList->ClosestCodepointIndexToCursorPlusOne = Glyph->CodepointIndex + 1;
 
-                if(!(Editor->Flags & EDITOR_FLAG_KEEP_DESIRED_X))
-                {
-                    Editor->CursorPosition.DesiredX = CursorX + AdvanceXPx;
-                    Editor->CursorPosition.LineIndex = Editor->LineCount;
+                    DrawList->Cursor.X = CursorX;
+                    DrawList->Cursor.Y = CursorY;
+
+                    if(!(Editor->Flags & EDITOR_FLAG_KEEP_DESIRED_X))
+                    {
+                        Editor->CursorPosition.DesiredX = CursorX;
+                        Editor->CursorPosition.LineIndex = Editor->LineCount;
+                    }
                 }
             }
-        }
+            else
+            {
+                if ((Glyph->CodepointIndex <= Editor->CursorPosition.CodepointIndex) &&
+                    (!DrawList->ClosestCodepointIndexToCursorPlusOne ||
+                    ((Glyph->CodepointIndex + 1) >= DrawList->ClosestCodepointIndexToCursorPlusOne))) {
+                    DrawList->ClosestCodepointIndexToCursorPlusOne = Glyph->CodepointIndex + 1;
 
-        CursorX += AdvanceXPx;
-        CursorY -= AdvanceYPx;
+                    DrawList->Cursor.X = CursorX + AdvanceXPx;
+                    DrawList->Cursor.Y = CursorY - AdvanceYPx;
+
+                    if(!(Editor->Flags & EDITOR_FLAG_KEEP_DESIRED_X))
+                    {
+                        Editor->CursorPosition.DesiredX = CursorX + AdvanceXPx;
+                        Editor->CursorPosition.LineIndex = Editor->LineCount;
+                    }
+                }
+            }
+
+            CursorX += AdvanceXPx;
+            CursorY -= AdvanceYPx;
+        }
     }
 
     // @Duplication
@@ -849,129 +909,29 @@ static void FlushLine(draw_command_list *DrawList, editor *Editor)
         // #TODO: This is the natural place to give it height, which should be passed in.
         DrawList->Selections[DrawList->SelectionsCount++] = Selection;
     }
+
+    ArenaEndLifetime(&Lifetime);
 }
 
-static void FlushVisualGlyphs(draw_command_list *DrawList, editor *Editor, kbts_direction ParagraphDirection,
-                              kbts_direction Direction, layout_glyph *Glyphs, int GlyphCount)
+static void DisplayLine(editor *Editor, draw_command_list *DrawList)
 {
-    edit_line *Line = GetCurrentLine(Editor);
-
-    if(!Line->Direction)
+    if(Editor->LineGlyphCount)
     {
-        Line->Direction = ParagraphDirection;
-
-        if(!Line->ActualAlignment)
-        {
-            Line->ActualAlignment = (ParagraphDirection == KBTS_DIRECTION_RTL) ? TEXT_ALIGNMENT_RIGHT : TEXT_ALIGNMENT_LEFT;
-        }
+        FlushLine(DrawList, Editor);
+        EditorNextLine(Editor, DrawList);
     }
-
-    layout_glyph *From = Glyphs;
-    layout_glyph *To = Editor->LineGlyphs + Editor->LineGlyphCount;
-    if(Line->Direction == KBTS_DIRECTION_RTL)
-    {
-        To = Editor->LineGlyphs + Editor->LineGlyphCapacity - Editor->LineGlyphCount - GlyphCount;
-    }
-
-    memcpy(To, From, sizeof(*From) * GlyphCount);
-    Editor->LineGlyphCount += GlyphCount;
 }
 
-static void FlushDirection(draw_command_list *DrawList, editor *Editor, kbts_direction ParagraphDirection,
-                           kbts_direction Direction, layout_glyph *Glyphs, int GlyphCount, int GlyphCapacity)
-{   
-    float RunningAdvance = Editor->RunningAdvance;
-    
-    int Rtl = (Direction == KBTS_DIRECTION_RTL);
-    if(Rtl)
+static void EditorEndLines(editor *Editor, draw_command_list *DrawList)
+{
+    if(Editor->LineGlyphCount)
     {
-        Glyphs = Glyphs + GlyphCapacity - GlyphCount;
+        FlushLine(DrawList, Editor);
+        EditorEndLine(Editor, DrawList);
     }
-
-    int StartIndex = 0;
-    int DirectionIncrement = 1;
-    if(Rtl)
-    {
-        StartIndex = GlyphCount - 1;
-        DirectionIncrement = -1;
-    }
-
-    if(Editor->Flags & EDITOR_FLAG_WRAP_LINES)
-    {
-        int LastShapeBreakGlyphIndexPlusOne = 0;
-        int LastSoftLineBreakGlyphIndexPlusOne = 0;
-        int LastShapeBreakUserId = -1;
-
-        for(int GlyphIndex = StartIndex;
-            (GlyphIndex >= 0) && (GlyphIndex < GlyphCount);
-            GlyphIndex += DirectionIncrement)
-        {
-            layout_glyph *Glyph = &Glyphs[GlyphIndex];
-
-            if((GlyphIndex != StartIndex) &&
-               (Glyph->CodepointIndex != LastShapeBreakUserId) &&
-                !Glyph->NoShapeBreak)
-            {
-                if(Glyph->BreakFlags & KBTS_BREAK_FLAG_LINE_SOFT)
-                {
-                    LastSoftLineBreakGlyphIndexPlusOne = GlyphIndex + 1;
-                }
-
-                LastShapeBreakGlyphIndexPlusOne = GlyphIndex + 1;
-                LastShapeBreakUserId = Glyph->CodepointIndex;
-            }
-
-            RunningAdvance += (float)Glyph->AdvanceX * Glyph->Scale;
-            if(RunningAdvance > (float)Editor->FrameBufferWidth)
-            {
-                int LastBreakIndex = GlyphIndex;
-                if(LastSoftLineBreakGlyphIndexPlusOne)
-                {
-                    LastBreakIndex = LastSoftLineBreakGlyphIndexPlusOne - 1;
-                }
-                else if(LastShapeBreakGlyphIndexPlusOne)
-                {
-                    LastBreakIndex = LastShapeBreakGlyphIndexPlusOne - 1;
-                }
-
-                int First = StartIndex;
-                int OnePastLast = LastBreakIndex;
-                if(Rtl)
-                {
-                    int Swap = First;
-                    First = OnePastLast + 1;
-                    OnePastLast = Swap + 1;
-                }
-
-                if(OnePastLast > First)
-                {
-                    FlushVisualGlyphs(DrawList, Editor, ParagraphDirection, Direction, Glyphs + First, OnePastLast - First);
-
-                    StartIndex = LastBreakIndex;
-                    LastSoftLineBreakGlyphIndexPlusOne = 0;
-                    LastShapeBreakGlyphIndexPlusOne = 0;
-                    RunningAdvance = 0;
-
-                    // Go back to the last break and resume counting from there.
-                    GlyphIndex = LastBreakIndex - 1;
-
-                    EditorNextLine(Editor, DrawList);
-                }
-            }
-        }
-    }
-
-    int First = StartIndex;
-    int OnePastLast = GlyphCount;
-    if(Rtl)
-    {
-        First = 0;
-        OnePastLast = StartIndex + 1;
-    }
-    FlushVisualGlyphs(DrawList, Editor, ParagraphDirection, Direction, Glyphs + First, OnePastLast - First);
-
-    Editor->RunningAdvance = RunningAdvance;
 }
+
+#define CURSOR_THICKNESS 4
 
 static float AlignmentOffsetXForLine(edit_line *Line, float TextWidth)
 {
@@ -990,6 +950,75 @@ static float AlignmentOffsetXForLine(edit_line *Line, float TextWidth)
     }
 
     return Result;
+}
+
+static void AppendLayoutGlyph(editor *Editor, draw_command_list *DrawList, kbts_run *Run, layout_glyph *LayoutGlyph)
+{
+    edit_line *Line = GetCurrentLine(Editor);
+    if(!Line->Direction)
+    {
+        Line->Direction = Run->ParagraphDirection;
+        Line->ActualAlignment = (Run->ParagraphDirection == KBTS_DIRECTION_RTL) ? TEXT_ALIGNMENT_RIGHT : TEXT_ALIGNMENT_LEFT;
+    }
+
+    float OriginalAdvance = Editor->RunningAdvance;
+    float LineTotalAdvance = OriginalAdvance + (float)LayoutGlyph->AdvanceX * LayoutGlyph->Scale;
+    layout_glyph *LineGlyphs = Editor->LineGlyphs;
+    int LineGlyphCount = Editor->LineGlyphCount;
+
+    if((Editor->Flags & EDITOR_FLAG_WRAP_LINES) &&
+       (LineTotalAdvance > (float)Editor->FrameBufferWidth))
+    {
+        int BreakIndex = 0;
+        float AdvanceAtBreak = 0;
+
+        if(Editor->LastSoftLineBreakLineGlyphIndexPlusOne)
+        {
+            BreakIndex = Editor->LastSoftLineBreakLineGlyphIndexPlusOne - 1;
+            AdvanceAtBreak = Editor->AdvanceAtSoftLineBreak;
+        }
+        else
+        {
+            // No line breaks are available. Use a shape break instead.
+            assert(Editor->LastShapeBreakLineGlyphIndexPlusOne);
+
+            BreakIndex = Editor->LastShapeBreakLineGlyphIndexPlusOne - 1;
+            AdvanceAtBreak = Editor->AdvanceAtShapeBreak;
+        }
+
+        Editor->LineGlyphCount = BreakIndex;
+        DisplayLine(Editor, DrawList);
+
+        memmove(LineGlyphs, LineGlyphs + BreakIndex, sizeof(layout_glyph) * (LineGlyphCount - BreakIndex));
+        LineGlyphCount -= BreakIndex;
+        LineTotalAdvance -= AdvanceAtBreak;
+    }
+
+    if(LineGlyphCount < Editor->LineGlyphCapacity)
+    {
+        if((!Editor->LastSoftLineBreakLineGlyphIndexPlusOne ||
+            (LayoutGlyph->CodepointIndex != Editor->LastSoftLineBreakCodepointIndex)) &&
+           (LayoutGlyph->BreakFlags & KBTS_BREAK_FLAG_LINE_SOFT))
+        {
+            Editor->LastSoftLineBreakLineGlyphIndexPlusOne = LineGlyphCount + 1;
+            Editor->LastSoftLineBreakCodepointIndex = LayoutGlyph->CodepointIndex;
+            Editor->AdvanceAtSoftLineBreak = OriginalAdvance;
+        }
+        if((!Editor->LastShapeBreakLineGlyphIndexPlusOne ||
+            (LayoutGlyph->CodepointIndex != Editor->LastShapeBreakCodepointIndex)) &&
+           !LayoutGlyph->NoShapeBreak)
+        {
+            Editor->LastShapeBreakLineGlyphIndexPlusOne = LineGlyphCount + 1;
+            Editor->LastShapeBreakCodepointIndex = LayoutGlyph->CodepointIndex;
+            Editor->AdvanceAtShapeBreak = OriginalAdvance;
+        }
+
+        LineGlyphs[LineGlyphCount++] = *LayoutGlyph;
+
+        Editor->RunningAdvance = LineTotalAdvance;
+    }
+
+    Editor->LineGlyphCount = LineGlyphCount;
 }
 
 static draw_command_list Draw(editor *Editor, int FontPixelHeight, int FrameBufferWidth, int FrameBufferHeight)
@@ -1180,113 +1209,86 @@ static draw_command_list Draw(editor *Editor, int FontPixelHeight, int FrameBuff
     kbts_ShapeCodepoint(Context, '\n');
     kbts_ShapeEnd(Context);
 
-    int CurrentDirectionGlyphCapacity = 1024;
-    layout_glyph *CurrentDirectionGlyphs = PushArray(&Editor->Arena, layout_glyph, Editor->LineGlyphCapacity, 0);
-    int CurrentDirectionGlyphCount = 0;
-    kbts_direction CurrentDirection = KBTS_DIRECTION_DONT_KNOW;
-    kbts_direction ParagraphDirection = 0;
-
     Editor->LineCount = 0;
     Editor->LineGlyphCount = 0;
     Editor->CursorY = 0;
     Editor->RunningAdvance = 0;
+    Editor->LastSoftLineBreakLineGlyphIndexPlusOne = 0;
+    Editor->LastShapeBreakLineGlyphIndexPlusOne = 0;
 
     int RunIndex = 0;
 
     EditorBeginLines(Editor);
     EditorBeginLine(Editor, &Result);
 
+    // @Hardcoded
+    int RtlReorderGlyphCapacity = 1024;
+    layout_glyph *RtlReorderGlyphs = PushArray(&Editor->Arena, layout_glyph, RtlReorderGlyphCapacity, 1);
+
     kbts_run Run;
     while(kbts_ShapeRun(Context, &Run))
     {
-        if((Run.Direction != CurrentDirection) ||
-           (Run.Flags & KBTS_BREAK_FLAG_LINE_HARD))
-        {
-            FlushDirection(&Result, Editor, ParagraphDirection, CurrentDirection, CurrentDirectionGlyphs, CurrentDirectionGlyphCount, CurrentDirectionGlyphCapacity);
-            CurrentDirection = Run.Direction;
-            CurrentDirectionGlyphCount = 0;
-        }
-
         if(Run.Flags & KBTS_BREAK_FLAG_LINE_HARD)
         {
-            EditorNextLine(Editor, &Result);
-        }
-        
-        if(Run.Flags & KBTS_BREAK_FLAG_PARAGRAPH_DIRECTION)
-        {
-            ParagraphDirection = Run.ParagraphDirection;
+            DisplayLine(Editor, &Result);
         }
 
         font *Font = KbtsFontToFont(Run.Font);
         float Scale = stbtt_ScaleForPixelHeight(&Font->Stbtt, (float)FontPixelHeight);
 
-        size_t RunGlyphCount = 0;
+        int RtlReorderGlyphCount = 0;
 
         kbts_glyph *RunGlyph;
         while(kbts_GlyphIteratorNext(&Run.Glyphs, &RunGlyph))
         {
-            if(CurrentDirectionGlyphCount < CurrentDirectionGlyphCapacity)
+            int CodepointIndex = RunGlyph->UserIdOrCodepointIndex;
+            kbts_shape_codepoint ShapeCodepoint = ZERO;
+            kbts_ShapeGetShapeCodepoint(Context, CodepointIndex, &ShapeCodepoint);
+
+            character *SourceCharacter = &Editor->Text[CodepointIndex];
+            SourceCharacter->BreakFlags = ShapeCodepoint.BreakFlags;
+
+            layout_glyph LayoutGlyph = ZERO;
+            LayoutGlyph.Font = KbtsFontToFont(Run.Font);
+            LayoutGlyph.Id = RunGlyph->Id;
+            LayoutGlyph.CodepointIndex = RunGlyph->UserIdOrCodepointIndex;
+            LayoutGlyph.Direction = Run.Direction;
+            LayoutGlyph.AdvanceX = RunGlyph->AdvanceX;
+            LayoutGlyph.AdvanceY = RunGlyph->AdvanceY;
+            LayoutGlyph.OffsetX = RunGlyph->OffsetX;
+            LayoutGlyph.OffsetY = RunGlyph->OffsetY;
+            LayoutGlyph.Scale = Scale;
+            LayoutGlyph.BreakFlags = ShapeCodepoint.BreakFlags;
+            LayoutGlyph.NoShapeBreak = (RunGlyph->Flags & KBTS_GLYPH_FLAG_NO_BREAK) != 0;
+            LayoutGlyph.IsNewline = (ShapeCodepoint.Codepoint == '\n');
+
+            if(Run.Direction == KBTS_DIRECTION_RTL)
             {
-                int CodepointIndex = RunGlyph->UserIdOrCodepointIndex;
-                kbts_shape_codepoint ShapeCodepoint = ZERO;
-                character *SourceCharacter = &Editor->Text[CodepointIndex];
-                kbts_ShapeGetShapeCodepoint(Context, CodepointIndex, &ShapeCodepoint);
-
-                SourceCharacter->BreakFlags = ShapeCodepoint.BreakFlags;
-
-                layout_glyph *LayoutGlyph;
-                if(CurrentDirection == KBTS_DIRECTION_RTL)
+                if(RtlReorderGlyphCount < RtlReorderGlyphCapacity)
                 {
-                    LayoutGlyph = &CurrentDirectionGlyphs[CurrentDirectionGlyphCapacity - 1 - CurrentDirectionGlyphCount++];
+                    RtlReorderGlyphs[RtlReorderGlyphCount++] = LayoutGlyph;
                 }
-                else
-                {
-                    LayoutGlyph = &CurrentDirectionGlyphs[CurrentDirectionGlyphCount++];
-                }
-
-                memset(LayoutGlyph, 0, sizeof(*LayoutGlyph));
-
-                LayoutGlyph->Font = KbtsFontToFont(Run.Font);
-                LayoutGlyph->Id = RunGlyph->Id;
-                LayoutGlyph->CodepointIndex = CodepointIndex;
-                LayoutGlyph->Direction = Run.Direction;
-                LayoutGlyph->AdvanceX = RunGlyph->AdvanceX;
-                LayoutGlyph->AdvanceY = RunGlyph->AdvanceY;
-                LayoutGlyph->OffsetX = RunGlyph->OffsetX;
-                LayoutGlyph->OffsetY = RunGlyph->OffsetY;
-                LayoutGlyph->Scale = Scale;
-                LayoutGlyph->BreakFlags = ShapeCodepoint.BreakFlags;
-                LayoutGlyph->NoShapeBreak = (RunGlyph->Flags & KBTS_GLYPH_FLAG_NO_BREAK) != 0;
-                LayoutGlyph->IsNewline = (ShapeCodepoint.Codepoint == '\n');
-
-                RunGlyphCount += 1;
+            }
+            else
+            {
+                AppendLayoutGlyph(Editor, &Result, &Run, &LayoutGlyph);
             }
         }
 
-        if(CurrentDirection == KBTS_DIRECTION_RTL)
+        if(Run.Direction == KBTS_DIRECTION_RTL)
         {
-            // RTL runs are globally right-to-left and locally left-to-right.
-            // We agglutinate them together by writing layout glyphs backwards.
-            // To restore the global visual left-to-right order, we have to flip each run here.
-            size_t BaseSwapIndex = CurrentDirectionGlyphCapacity - CurrentDirectionGlyphCount;
-
-            for(size_t SwapIndex = 0;
-                SwapIndex < (RunGlyphCount / 2);
-                ++SwapIndex)
+            // Reorder RTL runs to logical order, because line breaking is simpler to do in logical order.
+            for(int GlyphIndex = 0;
+                GlyphIndex < RtlReorderGlyphCount;
+                ++GlyphIndex)
             {
-                layout_glyph *Right = &CurrentDirectionGlyphs[BaseSwapIndex + SwapIndex];
-                layout_glyph *Left = &CurrentDirectionGlyphs[BaseSwapIndex + RunGlyphCount - 1 - SwapIndex];
-
-                layout_glyph Swap = *Left;
-                *Left = *Right;
-                *Right = Swap;
+                AppendLayoutGlyph(Editor, &Result, &Run, &RtlReorderGlyphs[RtlReorderGlyphCount - 1 - GlyphIndex]);
             }
+
         }
 
         RunIndex += 1;
     }
-
-    FlushDirection(&Result, Editor, ParagraphDirection, CurrentDirection, CurrentDirectionGlyphs, CurrentDirectionGlyphCount, CurrentDirectionGlyphCapacity);
 
     EditorEndLines(Editor, &Result);
 
