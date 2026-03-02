@@ -736,10 +736,7 @@ static void FlushLine(draw_command_list *DrawList, editor *Editor)
             }
             else
             {
-                if(!(BlockGlyph->BreakFlags & KBTS_BREAK_FLAG_WORD))
-                {
-                    LastDirectionChangeWasWithinAWord = 1;
-                }
+                LastDirectionChangeWasWithinAWord = !(BlockGlyph->BreakFlags & KBTS_BREAK_FLAG_WORD);
 
                 break;
             }
