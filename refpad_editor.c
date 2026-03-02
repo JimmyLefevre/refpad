@@ -695,6 +695,8 @@ static void FlushLine(draw_command_list *DrawList, editor *Editor)
     int *DirectionBlockOffsets = PushArray(&Editor->Arena, int, Editor->LineGlyphCapacity + 1, 1);
     int DirectionBlockCount = 0;
 
+    int LastDirectionChangeWasWithinAWord = 0;
+
     // At this point, Editor->LineGlyphs is still in logical order.
     // For drawing, we want:
     // - Clearly separated direction blocks. An LTR paragraph will display them forward, while an
@@ -724,7 +726,9 @@ static void FlushLine(draw_command_list *DrawList, editor *Editor)
             // whitespace has to go on the left of the entire word, which naturally works if we use
             // word breaks as boundaries here.
             // 
+
             if(((BlockGlyph->CodepointIndex == Glyph->CodepointIndex) ||
+                !LastDirectionChangeWasWithinAWord ||
                 !(BlockGlyph->BreakFlags & KBTS_BREAK_FLAG_WORD)) &&
                (BlockGlyph->Direction == Direction))
             {
@@ -732,6 +736,11 @@ static void FlushLine(draw_command_list *DrawList, editor *Editor)
             }
             else
             {
+                if(!(BlockGlyph->BreakFlags & KBTS_BREAK_FLAG_WORD))
+                {
+                    LastDirectionChangeWasWithinAWord = 1;
+                }
+
                 break;
             }
         }
@@ -972,7 +981,8 @@ static void AppendLayoutGlyph(editor *Editor, draw_command_list *DrawList, kbts_
         int BreakIndex = 0;
         float AdvanceAtBreak = 0;
 
-        if(Editor->LastSoftLineBreakLineGlyphIndexPlusOne)
+        if(Editor->LastSoftLineBreakLineGlyphIndexPlusOne &&
+           (Editor->AdvanceAtSoftLineBreak > 0.001f)) // @Float
         {
             BreakIndex = Editor->LastSoftLineBreakLineGlyphIndexPlusOne - 1;
             AdvanceAtBreak = Editor->AdvanceAtSoftLineBreak;
@@ -989,28 +999,73 @@ static void AppendLayoutGlyph(editor *Editor, draw_command_list *DrawList, kbts_
         Editor->LineGlyphCount = BreakIndex;
         DisplayLine(Editor, DrawList);
 
+        edit_line *NewLine = GetCurrentLine(Editor);
+        NewLine->Direction = Line->Direction;
+        NewLine->ActualAlignment = Line->ActualAlignment;
+
         memmove(LineGlyphs, LineGlyphs + BreakIndex, sizeof(layout_glyph) * (LineGlyphCount - BreakIndex));
+
+        {
+            int NewSoftLineBreakIndexPlusOne = Editor->LastSoftLineBreakLineGlyphIndexPlusOne - BreakIndex;
+            int NewSoftLineBreakCodepointIndex = INT_MIN;
+            
+            if(NewSoftLineBreakIndexPlusOne > 0)
+            {
+                NewSoftLineBreakCodepointIndex = Editor->LineGlyphs[NewSoftLineBreakIndexPlusOne - 1].CodepointIndex;
+            }
+            else
+            {
+                NewSoftLineBreakIndexPlusOne = 0;
+            }
+
+            Editor->LastSoftLineBreakLineGlyphIndexPlusOne = NewSoftLineBreakIndexPlusOne;
+            Editor->LastSoftLineBreakCodepointIndex = NewSoftLineBreakCodepointIndex;
+            Editor->AdvanceAtSoftLineBreak -= AdvanceAtBreak;
+        }
+
+        {
+            int NewShapeBreakIndexPlusOne = Editor->LastShapeBreakLineGlyphIndexPlusOne - BreakIndex;
+            int NewShapeBreakCodepointIndex = INT_MIN;
+            
+            if(NewShapeBreakIndexPlusOne > 0)
+            {
+                NewShapeBreakCodepointIndex = Editor->LineGlyphs[NewShapeBreakIndexPlusOne - 1].CodepointIndex;
+            }
+            else
+            {
+                NewShapeBreakIndexPlusOne = 0;
+            }
+
+            Editor->LastShapeBreakLineGlyphIndexPlusOne = NewShapeBreakIndexPlusOne;
+            Editor->LastShapeBreakCodepointIndex = NewShapeBreakCodepointIndex;
+            Editor->AdvanceAtShapeBreak -= AdvanceAtBreak;
+        }
+
         LineGlyphCount -= BreakIndex;
         LineTotalAdvance -= AdvanceAtBreak;
+        OriginalAdvance -= AdvanceAtBreak;
     }
 
     if(LineGlyphCount < Editor->LineGlyphCapacity)
     {
-        if((!Editor->LastSoftLineBreakLineGlyphIndexPlusOne ||
-            (LayoutGlyph->CodepointIndex != Editor->LastSoftLineBreakCodepointIndex)) &&
-           (LayoutGlyph->BreakFlags & KBTS_BREAK_FLAG_LINE_SOFT))
+        if(!LayoutGlyph->NoShapeBreak)
         {
-            Editor->LastSoftLineBreakLineGlyphIndexPlusOne = LineGlyphCount + 1;
-            Editor->LastSoftLineBreakCodepointIndex = LayoutGlyph->CodepointIndex;
-            Editor->AdvanceAtSoftLineBreak = OriginalAdvance;
-        }
-        if((!Editor->LastShapeBreakLineGlyphIndexPlusOne ||
-            (LayoutGlyph->CodepointIndex != Editor->LastShapeBreakCodepointIndex)) &&
-           !LayoutGlyph->NoShapeBreak)
-        {
-            Editor->LastShapeBreakLineGlyphIndexPlusOne = LineGlyphCount + 1;
-            Editor->LastShapeBreakCodepointIndex = LayoutGlyph->CodepointIndex;
-            Editor->AdvanceAtShapeBreak = OriginalAdvance;
+            if((!Editor->LastSoftLineBreakLineGlyphIndexPlusOne ||
+                (LayoutGlyph->CodepointIndex != Editor->LastSoftLineBreakCodepointIndex)) &&
+               (LayoutGlyph->BreakFlags & KBTS_BREAK_FLAG_LINE_SOFT))
+            {
+                Editor->LastSoftLineBreakLineGlyphIndexPlusOne = LineGlyphCount + 1;
+                Editor->LastSoftLineBreakCodepointIndex = LayoutGlyph->CodepointIndex;
+                Editor->AdvanceAtSoftLineBreak = OriginalAdvance;
+            }
+
+            if((!Editor->LastShapeBreakLineGlyphIndexPlusOne ||
+                (LayoutGlyph->CodepointIndex != Editor->LastShapeBreakCodepointIndex)))
+            {
+                Editor->LastShapeBreakLineGlyphIndexPlusOne = LineGlyphCount + 1;
+                Editor->LastShapeBreakCodepointIndex = LayoutGlyph->CodepointIndex;
+                Editor->AdvanceAtShapeBreak = OriginalAdvance;
+            }
         }
 
         LineGlyphs[LineGlyphCount++] = *LayoutGlyph;
