@@ -695,8 +695,6 @@ static void FlushLine(draw_command_list *DrawList, editor *Editor)
     int *DirectionBlockOffsets = PushArray(&Editor->Arena, int, Editor->LineGlyphCapacity + 1, 1);
     int DirectionBlockCount = 0;
 
-    int LastDirectionChangeWasWithinAWord = 0;
-
     // At this point, Editor->LineGlyphs is still in logical order.
     // For drawing, we want:
     // - Clearly separated direction blocks. An LTR paragraph will display them forward, while an
@@ -727,17 +725,12 @@ static void FlushLine(draw_command_list *DrawList, editor *Editor)
             // word breaks as boundaries here.
             // 
 
-            if(((BlockGlyph->CodepointIndex == Glyph->CodepointIndex) ||
-                !LastDirectionChangeWasWithinAWord ||
-                !(BlockGlyph->BreakFlags & KBTS_BREAK_FLAG_WORD)) &&
-               (BlockGlyph->Direction == Direction))
+            if(BlockGlyph->Direction == Direction)
             {
                 DirectionGlyphCount += 1;
             }
             else
             {
-                LastDirectionChangeWasWithinAWord = !(BlockGlyph->BreakFlags & KBTS_BREAK_FLAG_WORD);
-
                 break;
             }
         }
